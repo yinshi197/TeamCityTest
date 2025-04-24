@@ -17,9 +17,11 @@ public class App {
 
         long start = System.currentTimeMillis();
 
+        // 手动设置日志输出路径
+        String logRootPath = "VcsTestProject1/src/main/resources";
+
         try {
-            String path = App.class.getClassLoader().getResource(".").getPath();
-            File outputDir = new File(path, "output");
+            File outputDir = new File(logRootPath, "output");
             if (!outputDir.exists()) {
                 outputDir.mkdirs();
             }
@@ -43,9 +45,11 @@ public class App {
                 writer.write("[INFO] Status: SUCCESS\n");
                 writer.write("[INFO] Duration: " + (System.currentTimeMillis() - start) + "ms\n");
                 writer.write("--------------------------------------------------\n");
+
                 System.out.println("[App] Operation simulated: " + selectedOp);
                 System.out.println("[App] Wrote log to: " + logFile.getAbsolutePath());
             }
+
         } catch (IOException e) {
             e.printStackTrace();
         }
