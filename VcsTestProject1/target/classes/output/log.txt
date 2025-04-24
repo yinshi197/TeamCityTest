@@ -1,0 +1,2 @@
+TeamCity plugin test log
+Checkout operation simulated.
