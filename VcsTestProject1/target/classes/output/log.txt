@@ -1,7 +1,6 @@
-TeamCity plugin test log
-Checkout operation simulated.
-TeamCity plugin test log
-Checkout operation simulated.
-Timestamp: 2025-04-24 12:03:15TeamCity plugin test log
-Checkout operation simulated.
-Timestamp: 2025-04-24 12:31:08
+[INFO] Operation: git pull
+[INFO] Timestamp: 2025-04-24 14:09:43
+[INFO] Change File: change_1745474983299.txt
+[INFO] Status: SUCCESS
+[INFO] Duration: 1ms
+--------------------------------------------------
