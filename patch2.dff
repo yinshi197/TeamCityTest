@@ -1,0 +1,380 @@
+Index: tools/plugins/TeamCity/VisionByte/VisionByte-common/pom.xml
+==================================================================
+--- tools/plugins/TeamCity/VisionByte/VisionByte-common/pom.xml
++++ tools/plugins/TeamCity/VisionByte/VisionByte-common/pom.xml
+@@ -14,10 +14,16 @@
+       <groupId>org.jetbrains.teamcity</groupId>
+       <artifactId>common-vcs</artifactId>
+       <version>2025.03</version>
+       <scope>provided</scope>
+     </dependency>
++      <dependency>
++          <groupId>org.jetbrains.teamcity</groupId>
++          <artifactId>common</artifactId>
++          <version>2025.03</version>
++          <scope>provided</scope>
++      </dependency>
+   </dependencies>
+ 
+   <build>
+     <plugins>
+       <plugin>
+
+Index: tools/plugins/TeamCity/VisionByte/VisionByte-common/src/main/java/com/softbridge/visionbyte/Constants.java
+==================================================================
+--- tools/plugins/TeamCity/VisionByte/VisionByte-common/src/main/java/com/softbridge/visionbyte/Constants.java
++++ tools/plugins/TeamCity/VisionByte/VisionByte-common/src/main/java/com/softbridge/visionbyte/Constants.java
+@@ -23,6 +23,20 @@
+ 
+     public static final String PASSWORD = VcsRoot.SECURE_PROPERTY_PREFIX + "password";
+ 
+     public static final String REMOTE_URL = "url";
+ 
++    public static final String TEAMCITY_AGENT_VB_PATH= "TEAMCITY_VB_PATH";
++
++    /**
++     * The path property
++     */
++    public static final String PATH = "path";
++
++    String SHOW_CUSTOM_CLONE_PATH = "teamcity.visionbyte.showCustomClonePath";
++    String CUSTOM_CLONE_PATH_ENABLED = "teamcity.visionbyte.customClonePathEnabled";
++    String NATIVE_GIT_RETRY_IF_REMOTE_REF_NOT_FOUND = "teamcity.visionbyte.native.retryIfRemoteRefNotFound";
++    String AMAZON_HOSTS = "teamcity.visionbyte.amazonHosts";
++
++    String MIRROR_EXPIRATION_DAYS = "teamcity.visionbyte.mirrorExpirationDays";
++
+ }
+
+Index: tools/plugins/TeamCity/VisionByte/VisionByte-common/src/main/java/com/softbridge/visionbyte/VBVcsRoot.java
+==================================================================
+--- tools/plugins/TeamCity/VisionByte/VisionByte-common/src/main/java/com/softbridge/visionbyte/VBVcsRoot.java
++++ tools/plugins/TeamCity/VisionByte/VisionByte-common/src/main/java/com/softbridge/visionbyte/VBVcsRoot.java
+@@ -1,6 +1,110 @@
+ package com.softbridge.visionbyte;
++
++import org.jetbrains.annotations.NotNull;
++import org.jetbrains.annotations.Nullable;
++import jetbrains.buildServer.vcs.VcsException;
++import jetbrains.buildServer.vcs.VcsRoot;
++import jetbrains.buildServer.serverSide.TeamCityProperties;
++
++import java.io.File;
++import java.util.Map;
+ 
+ public class VBVcsRoot {
+ 
+-    //private final VcsRoot myVcsRoot;
++    protected final MirrorManager myMirrorManager;
++    private final VcsRoot myVcsRoot;
++    private final String myRepoUrl;
++    private final String myBranch;
++    private final String myUserName;
++    private final String myPassword;
++    private File myCustomRepositoryDir;
++
++    public VBVcsRoot(@NotNull MirrorManager mirrorManager,
++                     @NotNull VcsRoot vcsRoot) throws VcsException {
++        myMirrorManager = mirrorManager;
++        myVcsRoot = vcsRoot;
++        myRepoUrl = getRequiredProperty(Constants.REMOTE_URL);
++        myBranch = getProperty(Constants.BRANCH_NAME, "trunk");
++        myUserName = getProperty(Constants.USERNAME);
++        myPassword = getProperty(Constants.PASSWORD);
++        myCustomRepositoryDir = getPath();
++
++    }
++
++    public void setMyCustomRepositoryDir(File file) {
++        myCustomRepositoryDir = file;
++    }
++
++    @Nullable
++    private File getPath() {
++        if(!TeamCityProperties.getBoolean(Constants.CUSTOM_CLONE_PATH_ENABLED))
++            return null;
++        String path = getProperty(Constants.PATH);
++        return path == null ? null : new File(path);
++    }
++
++    @NotNull
++    public String getRepositoryUrl() {
++        return myRepoUrl;
++    }
++
++    @NotNull
++    public String getBranch() {
++        return myBranch;
++    }
++
++    public File getRepositoryDir() {
++        String url = getRepositoryUrl();
++        if(myCustomRepositoryDir != null) {
++            return myCustomRepositoryDir.isAbsolute() ?
++                    myCustomRepositoryDir :
++                    new File(myMirrorManager.getBaseMirrorsDir(), myCustomRepositoryDir.getPath());
++        }
++        return myMirrorManager.getMirrorDir(url);
++    }
++
++    private String getProperty(@NotNull String key) {
++        return myVcsRoot.getProperty(key);
++    }
++
++    private String getProperty(@NotNull String key, String defaultValue) {
++        return myVcsRoot.getProperty(key, defaultValue);
++    }
++
++    @NotNull
++    public Map<String, String> getProperties() {
++        return myVcsRoot.getProperties();
++    }
++
++    @NotNull
++    private String getRequiredProperty(@NotNull String key) throws VcsException {
++        String val = myVcsRoot.getProperty(key);
++        if (val == null || val.isEmpty()) {
++            throw new VcsException("Missing required VCS root property: " + key);
++        }
++        return val;
++    }
++
++    public VcsRoot getOriginalVcsRoot() {
++        return myVcsRoot;
++    }
++
++    @NotNull
++    public String getName() {
++        return myVcsRoot.getName();
++    }
++
++    public long getID() {
++        return myVcsRoot.getId();
++    }
++
++    @Override
++    public String toString() {
++        return myVcsRoot.toString();
++    }
++
++    @NotNull
++    public String describe(final boolean verbose) {
++        return myVcsRoot.describe(verbose);
++    }
+ }
+
+Index: tools/plugins/TeamCity/VisionByte/VisionByte-server/src/main/java/com/softbridge/visionbyte/VBVcsSupport.java
+==================================================================
+--- tools/plugins/TeamCity/VisionByte/VisionByte-server/src/main/java/com/softbridge/visionbyte/VBVcsSupport.java
++++ tools/plugins/TeamCity/VisionByte/VisionByte-server/src/main/java/com/softbridge/visionbyte/VBVcsSupport.java
+@@ -3,18 +3,22 @@
+ import jetbrains.buildServer.serverSide.PropertiesProcessor;
+ import jetbrains.buildServer.vcs.*;
+ import jetbrains.buildServer.vcs.patches.PatchBuilder;
+ import org.jetbrains.annotations.NotNull;
+ import org.jetbrains.annotations.Nullable;
++import com.intellij.openapi.diagnostic.Logger;
+ 
+ import java.io.IOException;
+ import java.util.*;
+ 
+ public class VBVcsSupport extends ServerVcsSupport
+         implements VcsBulkSuitabilityChecker, BuildPatchByCheckoutRules,
+         TestConnectionSupport, IncludeRuleBasedMappingProvider,
+         VcsRootIdentityProvider {
++
++    private static final Logger LOG = Logger.getInstance(VBVcsSupport.class.getName());
++
+     @Override
+     public void buildPatch(@NotNull VcsRoot root, @Nullable String fromVersion, @NotNull String toVersion, @NotNull PatchBuilder builder, @NotNull CheckoutRules checkoutRules) throws IOException, VcsException {
+ 
+     }
+ 
+@@ -21,22 +25,28 @@
+     @Override
+     public Collection<VcsClientMapping> getClientMapping(@NotNull VcsRoot vcsRoot, @NotNull IncludeRule includeRule) throws VcsException {
+         return Collections.emptyList();
+     }
+ 
++    /**
++     * Test connection to the VCS
++     * @param vcsRoot root to be tested
++     * @return success message or null
++     * @throws VcsException if connection failed
++     */
+     @Nullable
+     @Override
+     public String testConnection(@NotNull VcsRoot vcsRoot) throws VcsException {
+-        Random random = new Random();
+-
+-        int randomInt = random.nextInt(); // 任意 int
+-        if(randomInt % 2 == 0) {
+-            return "Connection failed";
+-        }
+-
+-        return null;    //null, if connection is ok, or a string message otherwise
+-    }
++        throw new VcsException("Test Connection failed");
++        //return "Test Connection failed";
++    }
++
++    @Override
++    public TestConnectionSupport getTestConnectionSupport() {
++        return this;
++    }
++
+ 
+     @NotNull
+     @Override
+     public List<Boolean> checkSuitable(@NotNull List<VcsRootEntry> entries, @NotNull Collection<String> paths) throws VcsException {
+         return Collections.emptyList();
+
+Index: tools/plugins/TeamCity/VisionByte/VisionByte-server/src/main/resources/buildServerResources/vbVcsSettings.jsp
+==================================================================
+--- tools/plugins/TeamCity/VisionByte/VisionByte-server/src/main/resources/buildServerResources/vbVcsSettings.jsp
++++ tools/plugins/TeamCity/VisionByte/VisionByte-server/src/main/resources/buildServerResources/vbVcsSettings.jsp
+@@ -1,11 +1,79 @@
+-<%@ page contentType="text/html;charset=UTF-8" language="java" %>
++<%@ page import="java.io.File" %>
++<%@ page import="com.softbridge.visionbyte.Constants" %>
++<%@ page import="jetbrains.buildServer.serverSide.TeamCityProperties" %>
++<%@ page import="jetbrains.buildServer.util.StringUtil" %>
++<%@ include file="/include.jsp" %>
+ <%@ taglib prefix="props" tagdir="/WEB-INF/tags/props" %>
++<%@ taglib prefix="admin" tagdir="/WEB-INF/tags/admin" %>
++<%@ taglib prefix="oauth" tagdir="/WEB-INF/tags/oauth" %>
+ 
++<jsp:useBean id="propertiesBean" scope="request" type="jetbrains.buildServer.controllers.BasePropertiesBean"/>
++<c:set var="vbPathEnv" value="<%= Constants.TEAMCITY_AGENT_VB_PATH%>" />
++<c:set var="showCustomClonePath" value="<%= TeamCityProperties.getBoolean(Constants.CUSTOM_CLONE_PATH_ENABLED) &&
++                                            (TeamCityProperties.getBoolean(Constants.SHOW_CUSTOM_CLONE_PATH)) ||
++                                             !StringUtil.isEmpty((propertiesBean.getProperties().get(Constants.PATH)))%>"/>
++<c:set var="placeholderNonPersonalToken" value="common usage"/>
++<c:set var="readOnly" value="${vcsPropertiesBean.readOnly}"/>
++<script type="text/javascript">
++    uploadedKeySelected = function(encrypted) {
++        if (encrypted) {
++            $j('#gitPassphraseRow').show();
++        } else {
++            $j('#secure\\:passphrase').val('');
++            $j('#gitPassphraseRow').hide();
++        }
++    };
++</script>
+ <table class="runnerFormTable">
+-    <tr>
+-        <td class="runnerFormLabel">Fossil URL:</td>
+-        <td>
+-            <props:textProperty name="url" className="longField"/>
+-        </td>
+-    </tr>
+-</table>
++    <l:settingsGroup title="General Settings">
++        <!-- Fetch URL -->
++        <tr>
++            <th><label for="url">Fetch URL: <l:star/></label></th>
++            <td>
++                <props:textProperty name="url" className="longField" disabled="${readOnly}"/>
++                <div class="smallNote" style="margin: 0;">Used for fetching data from the repository.</div>
++                <div id="fetchUrlCompatNote" class="smallNote error" style="margin: 0; display: none;"></div>
++                <span class="error" id="error_url"></span>
++            </td>
++        </tr>
++        <!-- Push URL -->
++        <tr class="advancedSetting">
++            <th><label for="push_url">Push URL:</label></th>
++            <td>
++                <props:textProperty name="push_url" className="longField" disabled="${readOnly}"/>
++                <div class="smallNote" style="margin: 0;">Used for pushing tags to the remote repository.
++                    If blank, the fetch url is used.
++                </div>
++                <div id="pushUrlCompatNote" class="smallNote error" style="margin: 0; display: none;"></div>
++                <span class="error" id="error_push_url"></span>
++            </td>
++        </tr>
++        <!-- Default branch -->
++        <tr class="advancedSetting">
++            <th><label for="branch">Default branch: <l:star/></label></th>
++            <td>
++                <props:textProperty name="branch" className="longField" disabled="${readOnly}"/>
++                <div class="smallNote" style="margin: 0">The main branch to be monitored</div>
++                <span class="error" id="error_branch"></span>
++            </td>
++        </tr>
++    </l:settingsGroup>
++
++    <l:settingsGroup title="Authentication Settings">
++        <!-- User Name -->
++        <tr id="vbUserName" class="auth userName">
++            <th><label for="username">Username:</label></th>
++            <td>
++                <props:textProperty name="username" className="longField" disabled="${readOnly}"/>
++                <div class="smallNote" style="margin: 0">
++                    Specify the username if there is no username in the clone URL. The username specified here overrides the username from the URL.
++                </div>
++            </td>
++        </tr>
++        <!-- Password -->
++        <tr id="vbPasswordRow" class="auth password">
++            <th><label for="secure:password">Password :</label></th>
++            <td><props:passwordProperty name="secure:password" className="longField" disabled="${readOnly}"/></td>
++        </tr>
++    </l:settingsGroup>
++</table>
+
+Index: tools/plugins/TeamCity/VisionByte/VisionByte-tests/src/test/java/com/softbridge/visionbyte/VBVcsSupportTest.java
+==================================================================
+--- tools/plugins/TeamCity/VisionByte/VisionByte-tests/src/test/java/com/softbridge/visionbyte/VBVcsSupportTest.java
++++ tools/plugins/TeamCity/VisionByte/VisionByte-tests/src/test/java/com/softbridge/visionbyte/VBVcsSupportTest.java
+@@ -37,19 +37,13 @@
+         assertEquals(Constants.BRANCH_NAME, vcsSupport.getDefaultBranchName(root));
+     }
+ 
+     @Test
+     public void testConnection_random() throws VcsException {
+-        VcsRootImpl root = createRootWithUrlAndBranch("http://example.com/repo", null);
+-
+-        boolean success = false;
+-        for (int i = 0; i < 20; i++) {
+-            String result = vcsSupport.testConnection(root);
+-            if (result == null) {
+-                success = true;
+-                break;
+-            }
+-        }
+-
+-        assertTrue(success, "Expected at least one successful connection.");
++        try {
++            VcsRootImpl root = createRootWithUrlAndBranch("http://example.com/repo", "develop");
++            vcsSupport.testConnection(root);
++        } catch (VcsException e) {
++            assertTrue(e.getMessage().contains("Test Connection failed"));
++        }
+     }
+ }
+
+Index: tools/plugins/TeamCity/VisionByte/teamcity-plugin.xml
+==================================================================
+--- tools/plugins/TeamCity/VisionByte/teamcity-plugin.xml
++++ tools/plugins/TeamCity/VisionByte/teamcity-plugin.xml
+@@ -2,16 +2,16 @@
+ <teamcity-plugin xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:schemas-jetbrains-com:teamcity-plugin-v1-xml">
+   <info>
+     <name>VisionByte</name>
+     <display-name>VisionByte</display-name>
+     <version>@Version@</version>
+-    <description>Plugin description</description>
++    <description>Allows VisionByte VCS support</description>
+     <download-url>Plugin download URL</download-url>
+     <email>Plugin author e-mail</email>
+     <vendor>
+-      <name>@VendorName@</name>
+-      <url>@VendorURL@</url>
++      <name>softbridge</name>
++      <url>https://softbridge.com/</url>
+       <logo>Plugin vendor logo URL</logo>
+     </vendor>
+   </info>
+   <deployment use-separate-classloader="true"/>
+ </teamcity-plugin>
+
