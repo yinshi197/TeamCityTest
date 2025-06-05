@@ -1,0 +1,74 @@
+Finalize build settings
+11:19:48 The build is removed from the queue to be prepared for the start
+11:19:48 Collecting changes in 1 VCS root
+11:19:48   VCS Root details
+11:19:48     "git1" {instance id=23, parent internal id=151, parent id=TeamCityTest_Git1, description: "https://github.com/yinshi197/TeamCityTest.git#main"}
+11:19:49 Compute revision for 'git1'
+11:19:49   Upper limit revision: 905d29a04caa8e50c32020a2912ec910d4295b32
+11:19:49   Cannot find modification in TeamCity database with revision 905d29a04caa8e50c32020a2912ec910d4295b32
+11:19:49   Computed revision: 905d29a04caa8e50c32020a2912ec910d4295b32
+11:19:49 Starting the build on the agent "DESKTOP-24HMBB5"
+11:19:49 Updating tools for build
+11:19:49   Found 1 tool used by the build: maven3_9
+11:19:49   All used tools are up-to-date
+11:19:49 Clearing temporary directory: D:\TeamCity\buildAgent\temp\buildTmp
+11:19:49 Publishing internal artifacts
+11:19:49   Publishing 1 file using [WebPublisher]
+11:19:49   Publishing 1 file using [ArtifactsCachePublisherImpl]
+11:19:50 Full checkout enforced. Reason: [Checkout directory is empty or doesn't exist]
+11:19:50 Will perform clean checkout. Reason: Checkout directory is empty or doesn't exist
+11:19:50 Checkout directory: C:\Users\FrankLi\Desktop\TCWorkSpace
+11:19:50 Updating sources: server side checkout
+11:19:50   Building and caching clean patch for VCS root: git1
+11:19:51   Transferring cached clean patch for VCS root: git1
+11:19:51   Repository sources transferred (6.11 MB)
+11:19:51   Removing C:\Users\FrankLi\Desktop\TCWorkSpace
+11:19:51   Updating C:\Users\FrankLi\Desktop\TCWorkSpace
+11:19:51 Step 1/1: execute main (Maven)
+11:19:51   Initial M2_HOME = D:\apache-maven-3.8.8
+11:19:51   Current M2_HOME = D:\TeamCity\buildAgent\tools\maven3_9
+11:19:51   PATH = D:\TeamCity\buildAgent\tools\maven3_9\bin;D:\VMware-workstation\bin\;D:\jdk-21.0.1.12-hotspot\bin;C:\ActiveTcl\bin;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\WINDOWS\System32\OpenSSH\;D:\cmake\bin;D:\LLVM\bin;D:\Strawberry\c\bin;D:\Strawberry\perl\site\bin;D:\Strawberry\perl\bin;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\;D:\TortoiseSVN\bin;C:\Program Files\dotnet\;D:\swigwin-4.3.0;C:\Users\FrankLi\AppData\Local\Programs\Python\Python311;D:\workspaces;D:\APP\monotone;D:\apache-maven-3.8.8\bin;D:\jdk1.8.0_441\bin;D:\jdk1.8.0_441\jre\bin;C:\Program Files\Git\cmd;C:\Users\FrankLi\AppData\Local\Programs\Python\Python311\Scripts;C:\Users\FrankLi\Desktop\last\projecth\intermediate\win64;C:\Users\FrankLi\Desktop\H\projecth\intermediate\win64;C:\softbridge_tools\bin;C:\Program Files\PowerShell\7\;D:\perforce\;C:\Users\FrankLi\Desktop;D:\Ruby34-x64\bin;C:\Users\FrankLi\AppData\Local\Microsoft\WindowsApps;D:\Microsoft VS Code\bin;C:\Users\FrankLi\.dotnet\tools;C:\Program Files\JetBrains\IntelliJ IDEA 2024.3.5\bin;;D:\APP\cursor\resources\app\bin
+11:19:51   Using watcher: D:\TeamCity\buildAgent\plugins\mavenPlugin\maven-watcher-jdk17\maven-watcher-agent.jar
+11:19:51   Using agent local repository at D:\TeamCity\buildAgent\system\jetbrains.maven.runner\maven.repo.local
+11:19:51   *** Start reading the project structure ***
+11:19:52   Initial MAVEN_OPTS not set
+11:19:52   Current MAVEN_OPTS not set
+11:19:52   Starting: D:\jdk1.8.0_441\bin\java.exe -DFxCopCmdFileVersion=17.0.35716.53 -DFxCopRoot=C:\Program Files\Microsoft Visual Studio\2022\Community\Team Tools\Static Analysis Tools\FxCop -Dagent.home.dir=D:\TeamCity\buildAgent -Dagent.name=DESKTOP-24HMBB5 -Dagent.ownPort=9090 -Dagent.work.dir=D:\TeamCity\buildAgent\work -Dbuild.number=2 -Dbuild.vcs.number=905d29a04caa8e50c32020a2912ec910d4295b32 -Dbuild.vcs.number.1=905d29a04caa8e50c32020a2912ec910d4295b32 -Dbuild.vcs.number.TeamCityTest_Git1=905d29a04caa8e50c32020a2912ec910d4295b32 -Dclassworlds.conf=D:\TeamCity\buildAgent\temp\buildTmp\teamcity.m2.conf -Dcom.jetbrains.maven.watcher.report.file=D:\TeamCity\buildAgent\temp\buildTmp\maven-build-info.xml -Djava.io.tmpdir=D:\TeamCity\buildAgent\temp\buildTmp -Dmaven.home=D:\TeamCity\buildAgent\tools\maven3_9 -Dmaven.multiModuleProjectDirectory=C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1 -Dteamcity.agent.cpuBenchmark=1672 -Dteamcity.auth.password=******* -Dteamcity.auth.userId=TeamCityBuildId=3302 -Dteamcity.build.changedFiles.file=D:\TeamCity\buildAgent\temp\buildTmp\teamcity.changedFiles.txt -Dteamcity.build.checkoutDir=C:\Users\FrankLi\Desktop\TCWorkSpace -Dteamcity.build.id=3302 -Dteamcity.build.properties.file=D:\TeamCity\buildAgent\temp\buildTmp\teamcity.build.parameters -Dteamcity.build.properties.file.checksum=D:\TeamCity\buildAgent\temp\buildTmp\teamcity.build.parameters.checksum -Dteamcity.build.tempDir=D:\TeamCity\buildAgent\temp\buildTmp -Dteamcity.build.workingDir=C:\Users\FrankLi\Desktop\TCWorkSpace -Dteamcity.buildConfName=Build -Dteamcity.buildType.id=TeamCityTest_Build -Dteamcity.configuration.properties.file=D:\TeamCity\buildAgent\temp\buildTmp\teamcity.config.parameters -Dteamcity.maven.watcher.home=D:\TeamCity\buildAgent\plugins\mavenPlugin\maven-watcher-jdk17 -Dteamcity.projectName=TeamCityTest -Dteamcity.runner.properties.file=D:\TeamCity\buildAgent\temp\buildTmp\teamcity.runner.parameters -Dteamcity.tests.recentlyFailedTests.file=D:\TeamCity\buildAgent\temp\buildTmp\teamcity.testsToRunFirst.txt -Dteamcity.version=2025.03 (build 186049) -Dmaven.repo.local=D:/TeamCity/buildAgent/system/jetbrains.maven.runner/maven.repo.local -classpath D:\TeamCity\buildAgent\tools\maven3_9\boot\plexus-classworlds-2.7.0.jar; org.codehaus.plexus.classworlds.launcher.Launcher -f C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\pom.xml -B -Dmaven.test.failure.ignore=true exec:java
+11:19:52   in directory: C:\Users\FrankLi\Desktop\TCWorkSpace
+11:19:52   [INFO] Scanning for projects...
+11:19:52   [INFO]
+11:19:52   [INFO] --------------------< com.example:VcsTestProject1 >---------------------
+11:19:52   [INFO] Building VcsTestProject1 1.0-SNAPSHOT
+11:19:52   [INFO]   from pom.xml
+11:19:52   [INFO] --------------------------------[ jar ]---------------------------------
+11:19:52   com.example:VcsTestProject1
+11:19:52   Importing data from 'C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\target\surefire-reports\TEST-*.xml' with 'surefire' processor
+11:19:52   Importing data from 'C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\target\failsafe-reports\TEST-*.xml' with 'surefire' processor
+11:19:52   [INFO]
+11:19:52   [INFO] --- exec:3.1.0:java (default-cli) @ VcsTestProject1 ---
+11:19:52   Surefire report watcher
+11:19:52     Watching paths:
+11:19:52     C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\target\surefire-reports\TEST-*.xml
+11:19:52   Hello from VcsTestProject1
+11:19:52   [App] Operation simulated: git pull
+11:19:52   [App] Wrote log to: C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\src\main\resources\output\log.txt
+11:19:52   [INFO] ------------------------------------------------------------------------
+11:19:52   [INFO] BUILD SUCCESS
+11:19:52   [INFO] ------------------------------------------------------------------------
+11:19:52   [INFO] Total time:  0.163 s
+11:19:52   [INFO] Finished at: 2025-06-05T11:19:52+08:00
+11:19:52   [INFO] ------------------------------------------------------------------------
+11:19:52   Process exited with code 0
+11:19:52   Publishing artifacts
+11:19:52     Collecting files to publish: [D:\TeamCity\buildAgent\temp\buildTmp\.tc-maven-bi\maven-build-info.xml.gz => .teamcity]
+11:19:52     Publishing 1 file using [WebPublisher]: D:/TeamCity/buildAgent/temp/buildTmp/.tc-maven-bi/maven-build-info.xml.gz => .teamcity
+11:19:52     Publishing 1 file using [ArtifactsCachePublisherImpl]: D:/TeamCity/buildAgent/temp/buildTmp/.tc-maven-bi/maven-build-info.xml.gz => .teamcity
+11:19:52   Waiting for 2 service processes to complete
+11:19:53   Surefire report watcher
+11:19:53     Watching paths:
+11:19:53     C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\target\failsafe-reports\TEST-*.xml
+11:19:53 Publishing internal artifacts
+11:19:53   Publishing 1 file using [WebPublisher]
+11:19:53   Publishing 1 file using [ArtifactsCachePublisherImpl]
+11:19:54 Publishing internal artifacts
+11:19:54 Build finished
