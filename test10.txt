@@ -39,36 +39,3 @@ Finalize build settings
 11:19:52   [INFO]
 11:19:52   [INFO] --------------------< com.example:VcsTestProject1 >---------------------
 11:19:52   [INFO] Building VcsTestProject1 1.0-SNAPSHOT
-11:19:52   [INFO]   from pom.xml
-11:19:52   [INFO] --------------------------------[ jar ]---------------------------------
-11:19:52   com.example:VcsTestProject1
-11:19:52   Importing data from 'C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\target\surefire-reports\TEST-*.xml' with 'surefire' processor
-11:19:52   Importing data from 'C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\target\failsafe-reports\TEST-*.xml' with 'surefire' processor
-11:19:52   [INFO]
-11:19:52   [INFO] --- exec:3.1.0:java (default-cli) @ VcsTestProject1 ---
-11:19:52   Surefire report watcher
-11:19:52     Watching paths:
-11:19:52     C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\target\surefire-reports\TEST-*.xml
-11:19:52   Hello from VcsTestProject1
-11:19:52   [App] Operation simulated: git pull
-11:19:52   [App] Wrote log to: C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\src\main\resources\output\log.txt
-11:19:52   [INFO] ------------------------------------------------------------------------
-11:19:52   [INFO] BUILD SUCCESS
-11:19:52   [INFO] ------------------------------------------------------------------------
-11:19:52   [INFO] Total time:  0.163 s
-11:19:52   [INFO] Finished at: 2025-06-05T11:19:52+08:00
-11:19:52   [INFO] ------------------------------------------------------------------------
-11:19:52   Process exited with code 0
-11:19:52   Publishing artifacts
-11:19:52     Collecting files to publish: [D:\TeamCity\buildAgent\temp\buildTmp\.tc-maven-bi\maven-build-info.xml.gz => .teamcity]
-11:19:52     Publishing 1 file using [WebPublisher]: D:/TeamCity/buildAgent/temp/buildTmp/.tc-maven-bi/maven-build-info.xml.gz => .teamcity
-11:19:52     Publishing 1 file using [ArtifactsCachePublisherImpl]: D:/TeamCity/buildAgent/temp/buildTmp/.tc-maven-bi/maven-build-info.xml.gz => .teamcity
-11:19:52   Waiting for 2 service processes to complete
-11:19:53   Surefire report watcher
-11:19:53     Watching paths:
-11:19:53     C:\Users\FrankLi\Desktop\TCWorkSpace\VcsTestProject1\target\failsafe-reports\TEST-*.xml
-11:19:53 Publishing internal artifacts
-11:19:53   Publishing 1 file using [WebPublisher]
-11:19:53   Publishing 1 file using [ArtifactsCachePublisherImpl]
-11:19:54 Publishing internal artifacts
-11:19:54 Build finished

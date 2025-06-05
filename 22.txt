@@ -1,0 +1,21 @@
+设想我们实现了一个 SimpleC 的解释器 (参考上课时的非递归汉诺塔)，可以看成 “单步执行语句” 的状态机：
+
+struct State {
+    stack<Frame> frames;
+    char *shared_memory;
+
+    void next() {
+        exec(frames.top().pc, shared_memory);
+    }
+};
+而其中每一个 next 都是 “一小步”，除了系统调用之外，都可以很快返回，那么我们把 SimpleC 的解释器改造一下，不就可以实现，用一个线程模拟 “两个线程” 执行了吗：
+
+struct State {
+    stack<Frame> t1, t2;
+    char *shared_memory;
+
+    void next() {
+        auto frames_chosen = random_choice({t1, t2});
+        exec(frames_chosen.top().pc, shared_memory);
+    }
+};
