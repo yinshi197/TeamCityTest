@@ -1,0 +1,474 @@
+# TeamCity VCS插件开发总结
+
+### 1.了解TeamCity
+
+参考：https://github.com/DevopsChina/lab/tree/main/ci/lab06-teamcity
+
+#### 开发TeamCity的插件首先得了解TeamCity是干啥的？
+
+TeamCity是一款 **持续集成（CI）和持续交付（CD）服务器**，主要用于自动化软件构建、测试和部署流程。
+
+简单理解
+
+TeamCity 就像是一个“自动化流水线”，每当你提交代码，它就可以：
+
+1. 自动拉取最新的代码；(轮询机制)
+2. 自动运行构建脚本（比如 Maven、Gradle、MSBuild）；
+3. 自动执行测试（单元测试、集成测试）；
+4. 构建成功后可以打包成可发布文件（如 JAR、WAR、Docker 镜像等）；
+5. 可以自动部署到测试环境或生产环境。
+
+TeamCity的两个核心组件：Server 和 Agent
+
+Server：控制中心，它负责处理用户请求、保存项目配置、分发构建任务。
+
+Agent: 工人(干活的)，负责执行构建任务 比如编译、运行测试、打包、部署等
+
+举个比喻：
+
+- Server 就像一个项目经理，安排任务；
+- Agent 就是程序员，真正去写代码、编译、测试
+
+#####  从VCS插件开发角度看 Server vs Agent
+
+| 组件            | 插件的角色                              | 你通常做的事情                                               |
+| --------------- | --------------------------------------- | ------------------------------------------------------------ |
+| **Server**      | 控制和监控 VCS 状态                     | 定义 VCS 连接方式（如 URL、用户名密码）<br />检测变更（polling VCS）<br />为Agent提供补丁文件<br />获取文件内容 |
+| **Agent**(可选) | 仅负责在Agent端签出和更新项目(传统方法) | 将源代码签出到其构建的同一位置，负责同步更新                 |
+
+对于VCS插件开发，我们不用关心TeamCity是如何实现自动化软件构建、测试和部署流程的，只需要实现`拉取仓库代码`、`收集变更`、`构建补丁`和`获取文件内容`
+
+VCS 插件的**核心职责**：
+
+| 功能             | 简述                                   | 由谁负责（Server or Agent） |
+| ---------------- | -------------------------------------- | --------------------------- |
+| 拉取仓库代码信息 | 解析仓库配置、连接远程仓库             | Server                      |
+| 收集变更         | 比较上次构建和这次构建之间的提交记录   | Server                      |
+| 构建补丁         | 生成差异文件，供 TeamCity 分析变更影响 | Server                      |
+| 获取文件内容     | 用于前端UI显示文件内容                 | Server                      |
+
+换句话来说我们开发的是 **VCS 支持模块**，TeamCity 把它当成一个“版本控制驱动”来看待，它的职责范围可以简单理解为：
+
+> ✨ TeamCity，想要支持 Fossil 仓库？这里是怎么拉代码、怎么查变更、怎么生成补丁、怎么 checkout。
+
+------
+
+##### 专注的关键点是：
+
+- **如何用 Fossil 命令/API 做这些事情**；
+- **如何用 TeamCity 的扩展点包装这些操作**（比如 `CollectChangesPolicy`, `BuildPatchByCheckoutRules`, `AgentCheckoutHandler` 等）；
+- **怎么让 Server 和 Agent 配合好一起工作**（构建 ID、目录、规则一致性）；
+
+### 2.TeamCity VCS插件开发的前置知识
+
+- Java基础：插件是用 Java 写的，需要具备一定的java基础
+- Maven基础：插件是用 Maven 进行打包的 Maven 的项目结构会很常见。参考资料：https://liaoxuefeng.com/books/java/maven/basic/index.html
+- TeamCity 构建流程和生命周期：不用精通构建细节，但要知道 什么时候触发 VCS 插件，要不然调试的时候无法找到入口点就尴尬了。
+- JetBrains API 和 TeamCity Open API
+  - 理解 `jetbrains.buildServer.vcs。*` 相关的类，特别是[`jetbrains.buildServer.vcs.VcsSupportContext`](http://javadoc.jetbrains.net/teamcity/openapi/current/jetbrains/buildServer/vcs/VcsSupportContext.html)、和[`jetbrains.buildServer.vcs.ServerVcsSupport`](http://javadoc.jetbrains.net/teamcity/openapi/current/jetbrains/buildServer/vcs/VcsSupportContext.html)
+  - 理解 `jetbrains.buildServer.agent.vcs.*`相关的类，特别是[`jetbrains.buildServer.agent.vcs.AgentVcsSupportContext`](http://javadoc.jetbrains.net/teamcity/openapi/current/jetbrains/buildServer/agent/vcs/AgentVcsSupportContext.html)
+
+
+### 3.VCS插件的整体框架和核心接口
+
+最小的VCS插件框架，只需要创建一个类继承ServerVcsSupport、实现VcsBulkSuitabilityChecker、BuildPatchByCheckoutRules等接口即可。
+
+最小可运行VCS插件框架只需要在此基础上实现简单几个接口就可以。
+
+```java
+package com.softbridge.visionbyte;
+
+import jetbrains.buildServer.metrics.Counter;
+import jetbrains.buildServer.metrics.NoOpCounter;
+import jetbrains.buildServer.metrics.ServerMetrics;
+import jetbrains.buildServer.metrics.Stoppable;
+import jetbrains.buildServer.serverSide.PropertiesProcessor;
+import jetbrains.buildServer.vcs.*;
+import jetbrains.buildServer.vcs.patches.PatchBuilder;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import com.intellij.openapi.diagnostic.Logger;
+
+import java.io.IOException;
+import java.util.*;
+
+import static jetbrains.buildServer.util.CollectionsUtil.setOf;
+
+public class VBVcsSupport extends ServerVcsSupport
+        implements VcsBulkSuitabilityChecker, BuildPatchByCheckoutRules,
+        TestConnectionSupport, IncludeRuleBasedMappingProvider,
+        VcsRootIdentityProvider {
+
+    private static final Logger LOG = Logger.getInstance(VBVcsSupport.class.getName());
+
+    private ServerMetrics myServerMetrics;
+    private final VcsOperationProgressProvider myProgressProvider;
+    private final ServerPluginConfig myConfig;
+    private final RepositoryManager myRepositoryManager;
+    private final CheckoutRulesLatestRevisionCache myCheckoutRulesLatestRevisionCache;
+    private Counter myCurrentStateMetric = new NoOpCounter();
+
+    public VBVcsSupport(@NotNull VcsOperationProgressProvider progressProvider,
+                         @NotNull ServerPluginConfig config,
+                         @NotNull RepositoryManager repositoryManager,
+                         @NotNull CheckoutRulesLatestRevisionCache checkoutRulesLatestRevisionCache) {
+        myProgressProvider = progressProvider;
+        myConfig = config;
+        myRepositoryManager = repositoryManager;
+        myCheckoutRulesLatestRevisionCache = checkoutRulesLatestRevisionCache;
+    }
+
+    @Override
+    public void buildPatch(@NotNull VcsRoot root, @Nullable String fromVersion, @NotNull String toVersion, @NotNull PatchBuilder builder, @NotNull CheckoutRules checkoutRules) throws IOException, VcsException {
+        // TODO: Implement BuildPatchByCheckoutRules
+        System.out.println("Vcs root =" + root.toString());
+        System.out.println("From version =" + fromVersion);
+        System.out.println("To version =" + toVersion);
+        System.out.println("Checkout rules =" + checkoutRules.toString());
+    }
+
+    @Override
+    public Collection<VcsClientMapping> getClientMapping(@NotNull VcsRoot vcsRoot, @NotNull IncludeRule includeRule) throws VcsException {
+        final String url = vcsRoot.getProperty(Constants.REMOTE_URL);
+        return Collections.singletonList(new VcsClientMapping(String.format("|%s|%s", url, includeRule.getFrom()), includeRule.getTo()));
+    }
+
+    /**
+     * Test connection to the VCS
+     * @param vcsRoot root to be tested
+     * @return success message or null
+     * @throws VcsException if connection failed
+     */
+    @Nullable
+    @Override
+    public String testConnection(@NotNull VcsRoot vcsRoot) throws VcsException {
+        OperationContext context = createContext(vcsRoot, "testConnection");
+        VBVcsRoot  vbRoot = context.getVBVcsRoot();
+        return myRepositoryManager.runWithDisabledRemove(vbRoot.getRepositoryDir(), () -> {
+            TestConnectionCommand testConnectionCommand = new TestConnectionCommand(this, myRepositoryManager);
+            try {
+                return testConnectionCommand.testConnection(context);
+            } catch (Exception e) {
+                throw context.warpException(e);
+            } finally {
+                context.close();
+            }
+        });
+    }
+
+    @Override
+    public TestConnectionSupport getTestConnectionSupport() {
+        return this;
+    }
+
+    public OperationContext createContext(@NotNull VcsRoot vcsRoot, String operation) {
+        return new OperationContext(myRepositoryManager, vcsRoot, operation, VBProgress.NO_OP, myConfig);
+    }
+
+    @NotNull
+    @Override
+    public List<Boolean> checkSuitable(@NotNull List<VcsRootEntry> entries, @NotNull Collection<String> paths) throws VcsException {
+        // TODO: 判断哪些 VcsRootEntry 与给定的 paths（变更路径）有关联，即是否适用。
+        // entries: 一个构建配置所包含的多个 VCS 根(如多个git), 每个VCS都有一个对应的 checkout rules
+        // paths: 变更路径
+        // 返回一个 boolean 列表，表示每个 VcsRootEntry 是否适用。（具体实现：判断 path与checkout rules是否有交集）
+        return Collections.emptyList();
+    }
+
+    @NotNull
+    @Override
+    public Collection<String> mapFullPath(@NotNull VcsRootEntry rootEntry, @NotNull String fullPath) throws VcsException {
+        // TODO: 获取全路径的映射，将一个 VCS 全路径（fullPath） 映射为相对于 VcsRootEntry 的本地路径（即文件在 repo 中的位置）
+        // git 的fullPath format: "<git revision hash>|<repository url>|<file relative path>"
+        //                         a1b2c3d4|https://example.com/repo.git|src/main/Foo.java
+        // visionbyte 的 fullPath format: "<commit uuid>|<repository url>|<file relative path>"
+        return Collections.emptyList();
+    }
+
+    @NotNull
+    @Override
+    public String getVcsRootIdentity(@NotNull VcsRoot vcsRoot) throws VcsException {
+        // TODO: 获取 VcsRoot 的唯一标识,返回 VCS Root 的身份字符串：可用于判断两个 VcsRoot 是否逻辑上相等。
+        return "";
+    }
+
+    @Nullable
+    @Override
+    public String getDefaultBranchName(@NotNull VcsRoot vcsRoot) {
+        final String branch = vcsRoot.getProperty(Constants.BRANCH_NAME);
+        return branch != null ? branch : "trunk";
+    }
+
+    @NotNull
+    @Override
+    public String getName() {
+        return Constants.VB_VCS_NAME;
+    }
+
+    @NotNull
+    @Override
+    public String getDisplayName() {
+        return Constants.VB_VCS_DISPLAY_NAME;
+    }
+
+    @Nullable
+    @Override
+    public PropertiesProcessor getVcsPropertiesProcessor() {
+        return new VcsPropertiesProcessor();
+    }
+
+    @NotNull
+    @Override
+    public String getVcsSettingsJspFilePath() {
+        return "vbVcsSettings.jsp";
+    }
+
+    @NotNull
+    @Override
+    public String describeVcsRoot(@NotNull VcsRoot vcsRoot) {
+        final String branch = vcsRoot.getProperty(Constants.BRANCH_NAME);
+        return "VisionByte VCS: " + vcsRoot.getProperty(Constants.REMOTE_URL) + (branch != null ? "(" + branch + ")" : "(trunk)");
+    }
+
+    @Nullable
+    @Override
+    public Map<String, String> getDefaultVcsProperties() {
+        // TODO: 设置默认的 VCS 属性
+        // 避免更改默认值 - 这会导致提交历史出现问题
+
+        final HashMap<String, String> map = new HashMap<String, String>();
+
+        return map;
+    }
+
+    @Nullable
+    @Override
+    public String getVersionDisplayName(@NotNull String version, @NotNull VcsRoot root) throws VcsException {
+        // TODO: Returns readable presentation of version (this format should be the same as DisplayVersion of VcsModification)
+        return "";
+    }
+
+    @NotNull
+    @Override
+    public Comparator<String> getVersionComparator() {
+        // TODO: 设置版本比较器
+        return new Comparator<String>() {
+            @Override
+            public int compare(String o1, String o2) {
+                return o1.compareTo(o2);
+            }
+        };
+    }
+
+    @NotNull
+    @Override
+    public VcsFileContentProvider getContentProvider() {
+        // TODO: 文件操作的具体实现，需要实现 VcsFileContentProvider 接口
+        return new VBFileContentProvider(this, myConfig);
+    }
+
+    @NotNull
+    @Override
+    public VBCollectChangesPolicy getCollectChangesPolicy() {
+        return new VBCollectChangesPolicy(this, myProgressProvider, myConfig, myRepositoryManager, myCheckoutRulesLatestRevisionCache);
+    }
+
+    @NotNull
+    @Override
+    public BuildPatchPolicy getBuildPatchPolicy() {
+        return this;
+    }
+
+    @Override
+    public boolean sourcesUpdatePossibleIfChangesNotFound(@NotNull VcsRoot root) {
+        // return true 表示 TeamCity 没有检测到变更记录（如提交、变更集），也应该触发一次源码更新操作。
+        return false;
+    }
+
+    @Nullable
+    public ServerMetrics getServerMetrics() {
+        return myServerMetrics;
+    }
+
+    @NotNull
+    public RepositoryStateData getCurrentState(VcsRoot repository) throws VcsException {
+        try(Stoppable stoppable = myCurrentStateMetric.startMsecsTimer()) {
+            VBVcsRoot vbRoot = new VBVcsRoot(myRepositoryManager, repository);
+            return getCurrentState(vbRoot);
+        }
+    }
+
+    @NotNull
+    public RepositoryStateData getCurrentState(VBVcsRoot vbRoot) throws VcsException {
+        // TODO: 待实现，获取当前状态（下面是为了通过编译的简单设计）
+        return myRepositoryManager.runWithDisabledRemove(vbRoot.getRepositoryDir(), () -> {
+            return RepositoryStateData.createVersionState("trunk", "revision test");
+        });
+    }
+
+    @Override
+    public ListFilesPolicy getListFilesPolicy() {
+        // TODO: 待实现，获取文件列表
+        //  获取文件列表 vb ls [path]
+        return new VBListFilesSupport();
+    }
+
+    @NotNull
+    @Override
+    public Map<String, String> getCheckoutProperties(@NotNull VcsRoot root) {
+        // TODO: 待实现，定义 哪些 VCS Root 配置项的变更，会影响 Agent 的检出行为
+        // TeamCity 会基于这个返回值来判断：是否需要执行 Clean Checkout、是否需要更换本地 checkout 目录（缓存目录）
+        Map<String, String> defaults = getDefaultVcsProperties();
+        Set<String> significantProps = setOf(Constants.REMOTE_URL);
+
+        Map<String, String> rootProperties = root.getProperties();
+        Map<String, String> repositoryProperties = new HashMap<String, String>();
+        for(String key : significantProps) {
+            String defVal = defaults.get(key);
+            String actualVal = rootProperties.get(key);
+            repositoryProperties.put(key, actualVal == null ? defVal : actualVal);
+        }
+
+        return repositoryProperties;
+    }
+}
+```
+
+#### 3.1 TC 的 VCS Checkout Mode(检出模式)
+
+参考：https://www.jetbrains.com/help/teamcity/vcs-checkout-mode.html?vcs-checkout-mode
+
+在 TeamCity 中，**VCS Checkout Mode（版本控制系统检出模式）** 是一个重要设置，它决定了 **项目源码是由谁来拉取（checkout）并传输到构建代理（Agent）上**。TeamCity 提供了四种主要的检出模式，每种模式都影响源码的检出位置和方式，但它们**都不影响服务器获取 VCS 变更信息的逻辑**（也就是说，TeamCity 服务器始终需要访问 VCS 服务器来获取变更列表和当前提交信息）。
+
+##### 3.1.1 总是在Agent端进行(传统的CI做法)
+
+**所有源码检出都必须在 Agent 上进行**。相当于每个Agent端都需要clone仓库、同步更新仓库。
+
+优点：
+
+- 减低服务器压力：Server 不再需要维护仓库缓存、打补丁、压缩和发送仓库变更补丁，减轻负载。
+- Agent端包含VCS 元目录：Agent端包含`.vbyte`文件，构建脚本可以直接执行vb命令
+- 数据传输效率高：构建代理直接访问 VCS 服务，**跳过了 server 的中转步骤**，尤其对大型项目更明显。
+
+缺点：
+
+- Agent端必须安装vb客户端：每个Agent都需要安装vb，确保可以通过命令行的方式拉取、更新仓库。
+- 每台 Agent 必须配置必要的环境：如果包含SSL、token、网络代理，每台Agent都要单独配置
+- Checkout Rule的 Exclude(排除规则)操作需单独处理：如果签出操作是一次性将整个仓库克隆下来，还需要单独将排除规则中的文件进行删除。
+
+##### 3.1.2 总在Server端进行
+
+TeamCity 的 **Server-side Checkout** 是指：
+
+- **由 TeamCity 服务器从 VCS 仓库中检出源码**。
+- 检出后的源码**以补丁或全量形式发送到构建 Agent**。
+- Agent 端不会保留 VCS 的内部信息（如 `.git`、`.svn`），因此构建过程中 **不能做 VCS 操作**（如 commit、checkout、log 等）。
+
+优点：
+
+- Server统一管理：Server 统一完成仓库检出、缓存，更容易集中管理访问控制
+- 优化Agent的部署：agent无需额外配置。
+- 适合频繁构建、变更小的项目：可以复用缓存、减少 VCS 服务器负载
+- 优化的补丁传输：如果不是全量清理（Clean Checkout），Server 只会打包改动部分（增量 Patch）发送
+
+缺点：
+
+- Agent端构建脚本无法访问.vbyte：因为只是仓库的导出，不会包含.vbyte元数据
+- 对server配置要求高：server统一构建、打包和发送补丁文件到多个Agent
+
+### 4.TeamCity 开发环境搭建
+
+- 安装java 8、Maven和Mysql数据库(TeamCity内置的数据库性能差，会卡顿)
+
+- 使用mvn指令创建项目
+
+  ```bash
+  mvn org.apache.maven.plugins:maven-archetype-plugin:2.4:generate -DarchetypeRepository=https://download.jetbrains.com/teamcity-repository -DarchetypeArtifactId=teamcity-plugin -DarchetypeGroupId=org.jetbrains.teamcity.archetypes -DarchetypeVersion=RELEASE -DteamcityVersion=2025.03
+  ```
+
+  groupId：设置java项目main/java 路径下的软件包名字 一般是 com.xxxx.teamcity.xxxx
+
+  artifactId：导出的jar包名字
+
+- TeamCity SDK Maven插件：可以快速部署TeamCity 插件  参考资料：https://github.com/JetBrains/teamcity-sdk-maven-plugin
+
+- 进入项目根目录：CMD运行 mvn package tc-sdk:start 会提示自动下载TeamCity 2025-03，下载完成会自动开启TeamCity服务器
+
+- CMD运行 mvn tc-sdk:stop 关闭服务器，会报错在 xxx\2025.03\webapps\ROOT\WEB-INF\lib路径下无法找到common-api.jar，这是因为TeamCity SDK Maven的开发人员已经从TeamCity团队离职了，已经很长时间没有维护了，而TeamCity的jar存放位置发生了变化，需要手动在TeamCity安装目录下的devPackage目录查找common-api.jar复制到webapps\ROOT\WEB-INF\lib目录下。
+
+- 重新CMD运行 mvn package tc-sdk:start启动TeamCity
+
+- 浏览器登陆http://localhost:8111/
+
+- 第一次启动TeamCity需要配置一些信息 只需要注意在选择数据库时使用Mysql即可，在这之前还需要在Mysql中创建一个库，TeamCity貌似不会自动创建数据库，只会在已有的数据库中创建表格。
+
+TeamCity安装目录下的 datadir\plugins是存放插件的目录
+
+
+
+VCS插件结构基本模块：
+
+`*-server`：运行在 TeamCity 服务器上
+
+`*-agent`：运行在 build agent 上
+
+`*-common`：Server和Agent通用的接口
+
+`build`：打包其它模块
+
+`*-tests`：TC的测试模块·
+
+### 5.TeamCity 调试环境
+
+使用TeamCity SDK Maven插件插件启动会自动开JVM远程调试功能
+
+在 IntelliJ IDEA 中：
+
+1. 打开 **Run → Edit Configurations**
+2. 点击左上角 ➕ 添加 **Remote JVM Debug**
+3. 设置：
+   - Name: `Debug TeamCity`
+   - Host: `localhost`
+   - Port: `10111`（10112是Agent的调试端口）
+4. 点击 OK
+
+然后点击 **调试启动按钮（小虫子图标）** 来连接。
+
+输出：已连接到地址为 ''localhost:10111'，传输: '套接字'' 的目标虚拟机，则表示成功连接了。
+
+### 6.TeamCity开发中如何查阅API文档
+
+1.可以在官网中搜索查看对应文档https://javadoc.jetbrains.net/teamcity/openapi/current/
+
+2.(推荐)在IntelliJ IDEA中开发，点击对应的API或者类会自动跳转到对应的jar包源码中。
+
+3.十分建议部署Git插件源码的debug环境，有利于理解一些接口。官网的接口文档太简洁了，很难理解其核心作用。
+
+4.https://plugins.jetbrains.com/docs/teamcity/developing-teamcity-plugins.html官网的教程文档，建议多看，会有一种常看常新的感觉。
+
+### 7.TeamCity开发注意的坑和使用细节
+
+1.在参考Git插件的源码时需要知道JGit是Git的java实现的jar包，Git VCS插件的部分接口会依赖于JGit的源码实现比如collectChanges会大量依赖与JGit，需要注意不被JGit的源码绕进去，关注collectChanges涉及到的接口的返回值即可。不要被JGit的源码实现绕进行，毕竟我们不需要实现JGit，而是做VCS插件开发。
+
+2.如果需要开启热部署参考：https://plugins.jetbrains.com/docs/teamcity/development-environment.html
+
+3.如果在开发中需要用到的jar包在官网仓库找不到，可以尝试在TeamCity安装目录里面进行查找，使用mvn安装到本地仓库
+
+```
+mvn install:install-file -Dfile="D:\TeamCity\webapps\ROOT\WEB-INF\lib\change-viewers.jar" -DgroupId=org.jetbrains.teamcity -DartifactId=change-viewers -Dversion=2025.03 -Dpackaging=jar
+```
+
+4.调试端口：server的调试端口是10111、agent端的调试端口是10112
+
+5.TeamCity SDK Maven plugin的指令总结
+
+- mvn tc-sdk:init 判断是否安装了TeamCity，如果缺少会提示自动下载
+- mvn tc-sdk:start 启动服务器
+- mvn tc-sdk:stop 停止服务器
+- mvn tc-sdk:reload 在不重启的情况下加载插件
+- mvn tc-sdk:reloadAgent 快速部署代理端更改
+- mvn tc-sdk:reloadResources WebUI的热部署
+
+6.遇到TeamCity网页打不开，可以尝试更换浏览器。
+
+
